@@ -10,7 +10,7 @@
 #import "SVWebViewControllerActivitySafari.h"
 #import "SVWebViewController.h"
 
-@interface SVWebViewController () <UIWebViewDelegate>
+@interface SVWebViewController () <UIWebViewDelegate, UIGestureRecognizerDelegate>
 
 @property (nonatomic, strong) UIBarButtonItem *backBarButtonItem;
 @property (nonatomic, strong) UIBarButtonItem *forwardBarButtonItem;
@@ -20,6 +20,8 @@
 
 @property (nonatomic, strong) UIWebView *webView;
 @property (nonatomic, strong) NSURL *URL;
+
+@property (nonatomic, strong) UILongPressGestureRecognizer *longPressRecognizer;
 
 - (id)initWithAddress:(NSString*)urlString;
 - (id)initWithURL:(NSURL*)URL;
@@ -73,6 +75,15 @@
 - (void)viewDidLoad {
 	[super viewDidLoad];
     [self updateToolbarItems];
+
+    UILongPressGestureRecognizer *longPressRecognizer = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(didReceiveLongPressRecognizer:)];
+    
+    longPressRecognizer.delegate = self;
+    
+    self.longPressRecognizer = longPressRecognizer;
+    
+    [self.webView addGestureRecognizer:longPressRecognizer];
+
 }
 
 - (void)viewDidUnload {
@@ -240,6 +251,63 @@
 - (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
 	[[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:NO];
     [self updateToolbarItems];
+}
+
+#pragma mark - Gesture Recognizer
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
+{
+    if([gestureRecognizer isEqual:self.longPressRecognizer]){
+        if([otherGestureRecognizer isKindOfClass:[UILongPressGestureRecognizer class]]){
+            otherGestureRecognizer.enabled = NO;
+        }
+    }
+    else if([otherGestureRecognizer isEqual:self.longPressRecognizer]){
+        if([gestureRecognizer isKindOfClass:[UILongPressGestureRecognizer class]]){
+            gestureRecognizer.enabled = NO;
+            return NO;
+        }
+    }
+    return YES;
+}
+
+- (void)didReceiveLongPressRecognizer:(UILongPressGestureRecognizer *)sender
+{
+    if(sender.state == UIGestureRecognizerStateBegan){
+        int displayWidth = [[self.webView stringByEvaluatingJavaScriptFromString:@"window.outerWidth"] intValue];
+        
+        CGFloat scale = self.webView.frame.size.width / displayWidth;\
+        
+        CGPoint pt = [sender locationInView:self.webView];
+        pt.x *= scale;
+        pt.y *= scale;
+        
+        pt.y -= 88.0f;
+        
+        pt.x += 10.0f;
+        pt.y += 10.0f;
+        
+        NSString *imgURL = [NSString stringWithFormat:@"document.elementFromPoint(%f, %f).src", pt.x, pt.y];
+        NSString *imageDataString = [self.webView stringByEvaluatingJavaScriptFromString:imgURL];
+        
+        if([imageDataString hasPrefix:@"data:image/jpeg;base64,"]){
+            NSData *data = [[NSData alloc] initWithBase64EncodedString:[imageDataString stringByReplacingOccurrencesOfString:@"data:image/jpeg;base64," withString:@""] options:0];
+            UIImage* image = [UIImage imageWithData:data];
+            
+            UIActivityViewController *activityView = [[UIActivityViewController alloc] initWithActivityItems:@[image] applicationActivities:nil];
+            
+            [self presentViewController:activityView animated:YES completion:nil];
+        }
+        if([imageDataString hasPrefix:@"data:image/png;base64,"]){
+            NSData *data = [[NSData alloc] initWithBase64EncodedString:[imageDataString stringByReplacingOccurrencesOfString:@"data:image/png;base64," withString:@""] options:0];
+            UIImage* image = [UIImage imageWithData:data];
+            
+            UIActivityViewController *activityView = [[UIActivityViewController alloc] initWithActivityItems:@[image] applicationActivities:nil];
+            
+            [self presentViewController:activityView animated:YES completion:nil];
+        }
+        
+        
+    }
 }
 
 #pragma mark - Target actions
